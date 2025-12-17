@@ -43,6 +43,19 @@ type CopilotStatus = {
   error?: string;
 };
 
+type OrgInfo = {
+  name?: string;
+  login?: string;
+  plan?: {
+    name: string;
+    seats?: number;
+    filledSeats?: number;
+  };
+  isEnterprise?: boolean;
+  trialEndsAt?: string;
+  trialDaysRemaining?: number;
+};
+
 type OrgData = {
   loading: boolean;
   error?: string;
@@ -51,6 +64,7 @@ type OrgData = {
   invitesCount: number;
   invitations: Invitation[];
   copilot?: CopilotStatus;
+  orgInfo?: OrgInfo;
 };
 
 const STORAGE_KEY = 'gh-org-configs';
@@ -118,7 +132,7 @@ export default function Page() {
   const refreshOrg = useCallback(async (config: OrgConfig) => {
     setOrgDataMap(prev => ({
       ...prev,
-      [config.id]: { ...prev[config.id], loading: true, error: undefined, membersCount: 0, members: [], invitesCount: 0, invitations: [], copilot: undefined }
+      [config.id]: { ...prev[config.id], loading: true, error: undefined, membersCount: 0, members: [], invitesCount: 0, invitations: [], copilot: undefined, orgInfo: undefined }
     }));
 
     try {
@@ -130,15 +144,17 @@ export default function Page() {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache'
       };
-      const [membersRes, invitesRes, copilotRes] = await Promise.all([
+      const [membersRes, invitesRes, copilotRes, orgInfoRes] = await Promise.all([
         fetch(`/api/members?${params}`, { cache: 'no-store', headers }),
         fetch(`/api/invitations?${params}`, { cache: 'no-store', headers }),
         fetch(`/api/copilot?${params}`, { cache: 'no-store', headers }),
+        fetch(`/api/org-info?${params}`, { cache: 'no-store', headers }),
       ]);
 
       const membersData = await membersRes.json();
       const invitesData = await invitesRes.json();
       const copilotData = await copilotRes.json();
+      const orgInfoData = await orgInfoRes.json();
 
       if (membersData.error) throw new Error(membersData.error);
       if (invitesData.error) throw new Error(invitesData.error);
@@ -152,6 +168,7 @@ export default function Page() {
           invitesCount: invitesData.count ?? 0,
           invitations: invitesData.invitations ?? [],
           copilot: copilotData.error ? { status: 'unknown', statusText: copilotData.error } : copilotData,
+          orgInfo: orgInfoData.error ? undefined : orgInfoData,
         }
       }));
     } catch (e: any) {
@@ -455,6 +472,46 @@ export default function Page() {
                     )}
                   </div>
                 </section>
+
+                {/* 企业版试用状态卡片 */}
+                {activeData.orgInfo?.trialDaysRemaining !== undefined && activeData.orgInfo?.trialDaysRemaining !== null && (
+                  <section className={`rounded-2xl p-5 border-2 ${
+                    activeData.orgInfo.trialDaysRemaining > 14 
+                      ? 'bg-blue-50 border-blue-500' 
+                      : activeData.orgInfo.trialDaysRemaining > 7
+                      ? 'bg-yellow-50 border-yellow-500'
+                      : 'bg-red-50 border-red-500'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-[var(--muted)]">GitHub Enterprise 试用</div>
+                        <div className={`text-xl font-bold mt-1 ${
+                          activeData.orgInfo.trialDaysRemaining > 14 
+                            ? 'text-blue-600' 
+                            : activeData.orgInfo.trialDaysRemaining > 7
+                            ? 'text-yellow-600'
+                            : 'text-red-600'
+                        }`}>
+                          {activeData.orgInfo.trialDaysRemaining > 0 
+                            ? `⏰ 剩余 ${activeData.orgInfo.trialDaysRemaining} 天`
+                            : '❌ 试用已过期'
+                          }
+                        </div>
+                        {activeData.orgInfo.trialEndsAt && (
+                          <div className="text-sm text-[var(--muted)] mt-1">
+                            到期时间: {formatDate(activeData.orgInfo.trialEndsAt)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-4xl">🏢</div>
+                        <div className="text-xs text-[var(--muted)]">
+                          {activeData.orgInfo.plan?.name || 'Enterprise'}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                )}
 
                 {/* 统计卡片 */}
                 <section className="grid sm:grid-cols-3 gap-4">
