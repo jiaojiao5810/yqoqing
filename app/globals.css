@@ -1,0 +1,16 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #ffffff;
+  --card: #f3f4f6;
+  --muted: #6b7280;
+}
+body { background: var(--bg); color: #1f2937; }
+a { color: #2563eb; }
+input::placeholder { color: #9ca3af; }
+input, textarea { color: #1f2937; }
+button { color: #1f2937; }
+table { color: #1f2937; }
