@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { Octokit } from "octokit";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,7 +21,8 @@ export async function GET(req: NextRequest) {
     const res = await octokit.request("GET /orgs/{org}/copilot/billing", {
       org,
       headers: {
-        'X-GitHub-Api-Version': '2022-11-28'
+        'X-GitHub-Api-Version': '2022-11-28',
+        'If-None-Match': '',  // 禁用 ETag 缓存
       }
     });
 
@@ -45,7 +47,8 @@ export async function GET(req: NextRequest) {
       statusText = 'Disabled';
     }
 
-    return Response.json({
+    // 添加响应头禁用缓存
+    return new Response(JSON.stringify({
       status,
       statusText,
       setting,
@@ -54,15 +57,31 @@ export async function GET(req: NextRequest) {
         active: seatBreakdown?.active_this_cycle ?? 0,
         pending: seatBreakdown?.pending_invitation ?? 0,
       }
-    }, { status: 200 });
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
+    });
   } catch (e: any) {
     // 如果是 404，可能是组织没有启用 Copilot
     if (e.status === 404) {
-      return Response.json({
+      return new Response(JSON.stringify({
         status: 'disabled',
         statusText: 'Copilot not enabled',
         error: 'Copilot is not enabled for this organization'
-      }, { status: 200 });
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        }
+      });
     }
     return Response.json({ error: e.message }, { status: 500 });
   }
