@@ -35,32 +35,8 @@ export async function GET(req: NextRequest) {
       page++;
     }
 
-    // 尝试获取审计日志获取成员加入时间（仅企业版支持）
-    let auditLogMap: Record<string, string> = {};
-    try {
-      // 使用审计日志 API 获取 org.add_member 事件
-      const auditRes = await octokit.request("GET /orgs/{org}/audit-log", {
-        org,
-        phrase: "action:org.add_member",
-        per_page: 100,
-        headers: {
-          'If-None-Match': '',
-        }
-      });
-      // 构建用户名到加入时间的映射（取最早的记录）
-      for (const entry of (auditRes.data as any[])) {
-        const username = entry.user;
-        const timestamp = entry.created_at || entry['@timestamp'];
-        if (username && timestamp && !auditLogMap[username]) {
-          auditLogMap[username] = new Date(typeof timestamp === 'number' ? timestamp : timestamp).toISOString();
-        }
-      }
-    } catch {
-      // 审计日志 API 可能不可用（需要企业版），忽略错误
-    }
-
-    // 获取每个成员的角色信息
-    const membersWithDetails = await Promise.all(
+    // 获取每个成员的加入时间（并行请求）
+    const membersWithJoinDate = await Promise.all(
       members.map(async (member) => {
         try {
           const membership = await octokit.request("GET /orgs/{org}/memberships/{username}", {
@@ -70,22 +46,22 @@ export async function GET(req: NextRequest) {
               'If-None-Match': '',
             }
           });
+          // membership API 返回中的角色和状态信息
+          const data = membership.data as any;
           return {
             ...member,
-            joined_at: auditLogMap[member.login] || null,
-            role: membership.data.role,
+            joined_at: data.created_at || null,
+            role: data.role,
           };
         } catch {
-          return {
-            ...member,
-            joined_at: auditLogMap[member.login] || null,
-          };
+          // 如果获取失败，返回原始数据
+          return member;
         }
       })
     );
 
     // 添加响应头禁用缓存
-    return new Response(JSON.stringify({ count: membersWithDetails.length, members: membersWithDetails }), {
+    return new Response(JSON.stringify({ count: membersWithJoinDate.length, members: membersWithJoinDate }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

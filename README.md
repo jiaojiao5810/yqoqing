@@ -83,11 +83,21 @@ git push -u origin main
 
 ### 所需权限清单
 
-| 权限 | 用途 | 是否必需 |
-|------|------|---------|
-| `admin:org` | 创建组织邀请、读取成员列表 | ✅ 必需 |
-| `read:org` | 读取组织信息（包含在 admin:org 中） | ✅ 必需 |
-| `manage_billing:copilot` | 检测 Copilot 启用状态 | ⚪ 可选 |
+#### 必需权限
+
+| 权限 | 用途 |
+|------|------|
+| `admin:org` | 创建组织邀请、管理成员 |
+| `read:org` | 读取组织成员列表、获取成员角色信息 |
+
+#### 可选权限
+
+| 权限 | 用途 | 说明 |
+|------|------|------|
+| `manage_billing:copilot` | 检测 Copilot 启用状态 | 不勾选则 Copilot 状态显示"未知" |
+| `audit_log` | 读取成员加入时间 | ⚠️ 仅 GitHub Enterprise 支持 |
+
+> 💡 **注意**：成员加入时间功能依赖**审计日志 API**，这是 **GitHub Enterprise** 专属功能。如果你的组织不是企业版，成员加入时间将无法显示（但邀请时间可以正常显示）。
 
 ### 权限勾选截图说明
 
@@ -99,6 +109,8 @@ git push -u origin main
    ☑️ write:org
    
 ☑️ manage_billing:copilot (可选，用于检测 Copilot 状态)
+
+☑️ audit_log (可选，企业版专用，用于获取成员加入时间)
 ```
 
 ---
