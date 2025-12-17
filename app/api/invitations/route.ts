@@ -18,14 +18,22 @@ export async function GET(req: NextRequest) {
 
     const octokit = new Octokit({ auth: token });
 
-    // 使用分页获取所有邀请，添加 headers 禁用 GitHub 条件请求缓存
-    const invitations = await octokit.paginate("GET /orgs/{org}/invitations", {
-      org,
-      per_page: 100,
-      headers: {
-        'If-None-Match': '',  // 禁用 ETag 缓存
-      }
-    });
+    // 获取所有邀请（分页）
+    const invitations: any[] = [];
+    let page = 1;
+    while (true) {
+      const res = await octokit.request("GET /orgs/{org}/invitations", {
+        org,
+        per_page: 100,
+        page,
+        headers: {
+          'If-None-Match': '',  // 禁用 ETag 缓存
+        }
+      });
+      invitations.push(...res.data);
+      if (res.data.length < 100) break;
+      page++;
+    }
 
     // 添加响应头禁用缓存
     return new Response(JSON.stringify({ count: invitations.length, invitations }), {
