@@ -55,6 +55,8 @@ export default function Page() {
   // 展开的成员列表
   const [expandedMembers, setExpandedMembers] = useState<Record<string, boolean>>({});
   const [expandedInvites, setExpandedInvites] = useState<Record<string, boolean>>({});
+  // 刷新状态
+  const [refreshing, setRefreshing] = useState(false);
 
   // 从localStorage加载配置
   useEffect(() => {
@@ -87,8 +89,14 @@ export default function Page() {
     }));
 
     try {
-      const params = new URLSearchParams({ org: config.org });
-      const headers = { 'x-github-token': config.token };
+      // 添加时间戳强制绕过缓存
+      const timestamp = Date.now();
+      const params = new URLSearchParams({ org: config.org, _t: timestamp.toString() });
+      const headers: HeadersInit = { 
+        'x-github-token': config.token,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      };
       const [membersRes, invitesRes, copilotRes] = await Promise.all([
         fetch(`/api/members?${params}`, { cache: 'no-store', headers }),
         fetch(`/api/invitations?${params}`, { cache: 'no-store', headers }),
@@ -129,8 +137,12 @@ export default function Page() {
   }, []);
 
   // 刷新所有组织数据
-  const refreshAll = useCallback(() => {
-    orgConfigs.forEach(config => refreshOrg(config));
+  const refreshAll = useCallback(async () => {
+    setRefreshing(true);
+    console.log('🔄 开始刷新所有组织数据...');
+    await Promise.all(orgConfigs.map(config => refreshOrg(config)));
+    console.log('✅ 刷新完成');
+    setRefreshing(false);
   }, [orgConfigs, refreshOrg]);
 
   // 组织配置变化时刷新数据
@@ -208,7 +220,8 @@ export default function Page() {
       if (data?.results) {
         setLogs(data.results.map((r: any) => r.ok ? `✅ ${r.identifier}` : `❌ ${r.identifier} → ${r.error}`));
       }
-      await refreshOrg(activeConfig);
+      // 延迟 1 秒后刷新，确保 GitHub API 数据已更新
+      setTimeout(() => refreshOrg(activeConfig), 1000);
     } catch (e: any) {
       setLogs([`❌ ${e.message}`]);
     } finally {
@@ -223,9 +236,10 @@ export default function Page() {
           <h1 className="text-2xl md:text-3xl font-semibold">GitHub 多组织邀请管理</h1>
           <button
             onClick={refreshAll}
-            className="px-3 py-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-sm transition"
+            disabled={refreshing}
+            className="px-3 py-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 disabled:opacity-50 text-sm transition"
           >
-            🔄 刷新全部
+            {refreshing ? '⏳ 刷新中...' : '🔄 刷新全部'}
           </button>
         </header>
 
