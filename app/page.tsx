@@ -30,6 +30,7 @@ type OrgConfig = {
   name: string;
   token: string;
   org: string;
+  trialEndDate?: string;  // 试用到期日期 YYYY-MM-DD
 };
 
 type CopilotStatus = {
@@ -94,6 +95,7 @@ export default function Page() {
   const [newName, setNewName] = useState('');
   const [newToken, setNewToken] = useState('');
   const [newOrg, setNewOrg] = useState('');
+  const [newTrialEndDate, setNewTrialEndDate] = useState('');
   // 邀请相关
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -211,6 +213,7 @@ export default function Page() {
       name: newName.trim(),
       token: newToken.trim(),
       org: newOrg.trim(),
+      trialEndDate: newTrialEndDate.trim() || undefined,
     };
     
     setOrgConfigs(prev => [...prev, newConfig]);
@@ -218,6 +221,7 @@ export default function Page() {
     setNewName('');
     setNewToken('');
     setNewOrg('');
+    setNewTrialEndDate('');
     setShowAddForm(false);
     
     // 立即刷新新组织数据
@@ -347,6 +351,16 @@ export default function Page() {
                     className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   />
                 </div>
+                <div>
+                  <label className="text-sm text-[var(--muted)] block mb-1">试用到期日期（可选）</label>
+                  <input
+                    type="date"
+                    value={newTrialEndDate}
+                    onChange={e => setNewTrialEndDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">如果是企业版试用，可填写到期日期</p>
+                </div>
                 <button
                   onClick={addOrg}
                   disabled={!newName.trim() || !newToken.trim() || !newOrg.trim()}
@@ -473,45 +487,65 @@ export default function Page() {
                   </div>
                 </section>
 
-                {/* 企业版试用状态卡片 */}
-                {activeData.orgInfo?.trialDaysRemaining !== undefined && activeData.orgInfo?.trialDaysRemaining !== null && (
-                  <section className={`rounded-2xl p-5 border-2 ${
-                    activeData.orgInfo.trialDaysRemaining > 14 
-                      ? 'bg-blue-50 border-blue-500' 
-                      : activeData.orgInfo.trialDaysRemaining > 7
-                      ? 'bg-yellow-50 border-yellow-500'
-                      : 'bg-red-50 border-red-500'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm text-[var(--muted)]">GitHub Enterprise 试用</div>
-                        <div className={`text-xl font-bold mt-1 ${
-                          activeData.orgInfo.trialDaysRemaining > 14 
-                            ? 'text-blue-600' 
-                            : activeData.orgInfo.trialDaysRemaining > 7
-                            ? 'text-yellow-600'
-                            : 'text-red-600'
-                        }`}>
-                          {activeData.orgInfo.trialDaysRemaining > 0 
-                            ? `⏰ 剩余 ${activeData.orgInfo.trialDaysRemaining} 天`
-                            : '❌ 试用已过期'
-                          }
-                        </div>
-                        {activeData.orgInfo.trialEndsAt && (
-                          <div className="text-sm text-[var(--muted)] mt-1">
-                            到期时间: {formatDate(activeData.orgInfo.trialEndsAt)}
+                {/* 企业版试用状态卡片 - 从配置或API获取 */}
+                {(() => {
+                  // 优先使用配置中的试用到期日期
+                  let trialDays: number | null = null;
+                  let trialEndDateStr: string | null = null;
+                  
+                  if (activeConfig?.trialEndDate) {
+                    const trialEnd = new Date(activeConfig.trialEndDate);
+                    const now = new Date();
+                    now.setHours(0, 0, 0, 0);
+                    trialEnd.setHours(0, 0, 0, 0);
+                    trialDays = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                    trialEndDateStr = activeConfig.trialEndDate;
+                  } else if (activeData.orgInfo?.trialDaysRemaining !== undefined && activeData.orgInfo?.trialDaysRemaining !== null) {
+                    trialDays = activeData.orgInfo.trialDaysRemaining;
+                    trialEndDateStr = activeData.orgInfo.trialEndsAt || null;
+                  }
+                  
+                  if (trialDays === null) return null;
+                  
+                  return (
+                    <section className={`rounded-2xl p-5 border-2 ${
+                      trialDays > 14 
+                        ? 'bg-blue-50 border-blue-500' 
+                        : trialDays > 7
+                        ? 'bg-yellow-50 border-yellow-500'
+                        : 'bg-red-50 border-red-500'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm text-[var(--muted)]">GitHub Enterprise 试用</div>
+                          <div className={`text-xl font-bold mt-1 ${
+                            trialDays > 14 
+                              ? 'text-blue-600' 
+                              : trialDays > 7
+                              ? 'text-yellow-600'
+                              : 'text-red-600'
+                          }`}>
+                            {trialDays > 0 
+                              ? `⏰ 剩余 ${trialDays} 天`
+                              : '❌ 试用已过期'
+                            }
                           </div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-4xl">🏢</div>
-                        <div className="text-xs text-[var(--muted)]">
-                          {activeData.orgInfo.plan?.name || 'Enterprise'}
+                          {trialEndDateStr && (
+                            <div className="text-sm text-[var(--muted)] mt-1">
+                              到期时间: {trialEndDateStr}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className="text-4xl">🏢</div>
+                          <div className="text-xs text-[var(--muted)]">
+                            {activeData.orgInfo?.plan?.name || 'Enterprise'}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </section>
-                )}
+                    </section>
+                  );
+                })()}
 
                 {/* 统计卡片 */}
                 <section className="grid sm:grid-cols-3 gap-4">
