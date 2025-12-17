@@ -35,8 +35,33 @@ export async function GET(req: NextRequest) {
       page++;
     }
 
+    // 获取每个成员的加入时间（并行请求）
+    const membersWithJoinDate = await Promise.all(
+      members.map(async (member) => {
+        try {
+          const membership = await octokit.request("GET /orgs/{org}/memberships/{username}", {
+            org,
+            username: member.login,
+            headers: {
+              'If-None-Match': '',
+            }
+          });
+          // membership API 返回中的角色和状态信息
+          const data = membership.data as any;
+          return {
+            ...member,
+            joined_at: data.created_at || null,
+            role: data.role,
+          };
+        } catch {
+          // 如果获取失败，返回原始数据
+          return member;
+        }
+      })
+    );
+
     // 添加响应头禁用缓存
-    return new Response(JSON.stringify({ count: members.length, members }), {
+    return new Response(JSON.stringify({ count: membersWithJoinDate.length, members: membersWithJoinDate }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

@@ -3,8 +3,27 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 
-type Member = { id: number; login: string; avatar_url?: string };
-type Invitation = { id: number; email?: string; login?: string; invitee?: { login: string } };
+type Member = { 
+  id: number; 
+  login: string; 
+  avatar_url?: string;
+  joined_at?: string;  // 加入时间
+  role?: string;       // 角色 (admin/member)
+};
+type Invitation = { 
+  id: number; 
+  email?: string; 
+  login?: string; 
+  invitee?: { login: string };
+  created_at?: string;  // 邀请时间
+};
+
+type InviteResult = {
+  identifier: string;
+  ok: boolean;
+  error?: string;
+  message?: string;
+};
 
 type OrgConfig = {
   id: string;
@@ -36,6 +55,19 @@ type OrgData = {
 
 const STORAGE_KEY = 'gh-org-configs';
 
+// 格式化时间
+function formatDate(dateStr?: string): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
 export default function Page() {
   // 组织配置列表
   const [orgConfigs, setOrgConfigs] = useState<OrgConfig[]>([]);
@@ -51,10 +83,11 @@ export default function Page() {
   // 邀请相关
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
+  const [inviteResults, setInviteResults] = useState<InviteResult[]>([]);
   // 展开的成员列表
   const [expandedMembers, setExpandedMembers] = useState<Record<string, boolean>>({});
   const [expandedInvites, setExpandedInvites] = useState<Record<string, boolean>>({});
+  const [expandedFailed, setExpandedFailed] = useState<Record<string, boolean>>({});
   // 刷新状态
   const [refreshing, setRefreshing] = useState(false);
 
@@ -205,7 +238,7 @@ export default function Page() {
     if (!activeConfig) return;
     
     setSending(true);
-    setLogs([]);
+    setInviteResults([]);
     try {
       const res = await fetch('/api/invite', {
         method: 'POST',
@@ -218,16 +251,24 @@ export default function Page() {
       });
       const data = await res.json();
       if (data?.results) {
-        setLogs(data.results.map((r: any) => r.ok ? `✅ ${r.identifier}` : `❌ ${r.identifier} → ${r.error}`));
+        setInviteResults(data.results);
       }
       // 延迟 1 秒后刷新，确保 GitHub API 数据已更新
       setTimeout(() => refreshOrg(activeConfig), 1000);
+      // 清空输入框
+      if (data?.okCount > 0) {
+        setInput('');
+      }
     } catch (e: any) {
-      setLogs([`❌ ${e.message}`]);
+      setInviteResults([{ identifier: '请求', ok: false, error: e.message }]);
     } finally {
       setSending(false);
     }
   }
+
+  // 成功和失败的邀请结果
+  const successResults = inviteResults.filter(r => r.ok);
+  const failedResults = inviteResults.filter(r => !r.ok);
 
   return (
     <main className="min-h-screen p-4 md:p-8">
@@ -454,18 +495,32 @@ export default function Page() {
                         <div className="text-[var(--muted)]">暂无成员</div>
                       ) : (
                         activeData.members.map((member) => (
-                          <div key={member.id} className="flex items-center gap-3 bg-gray-100 rounded-xl p-3">
-                            {member.avatar_url && (
-                              <img src={member.avatar_url} alt="" className="w-8 h-8 rounded-full" />
+                          <div key={member.id} className="flex items-center justify-between bg-gray-100 rounded-xl p-3">
+                            <div className="flex items-center gap-3">
+                              {member.avatar_url && (
+                                <img src={member.avatar_url} alt="" className="w-8 h-8 rounded-full" />
+                              )}
+                              <div>
+                                <a
+                                  href={`https://github.com/${member.login}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-mono text-blue-600 hover:underline"
+                                >
+                                  {member.login}
+                                </a>
+                                {member.role === 'admin' && (
+                                  <span className="ml-2 px-1.5 py-0.5 text-xs bg-purple-100 text-purple-600 rounded">
+                                    管理员
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {member.joined_at && (
+                              <div className="text-right text-xs text-[var(--muted)]">
+                                📅 {formatDate(member.joined_at)}
+                              </div>
                             )}
-                            <a
-                              href={`https://github.com/${member.login}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-mono text-blue-600 hover:underline"
-                            >
-                              {member.login}
-                            </a>
                           </div>
                         ))
                       )}
@@ -496,13 +551,47 @@ export default function Page() {
                             <div className="font-mono">
                               {inv.login || inv.email || inv.invitee?.login || '(unknown)'}
                             </div>
-                            <span className="text-xs text-[var(--muted)]">ID: {inv.id}</span>
+                            <div className="text-right">
+                              <span className="text-xs text-[var(--muted)]">ID: {inv.id}</span>
+                              {inv.created_at && (
+                                <div className="text-xs text-[var(--muted)]">
+                                  📅 {formatDate(inv.created_at)}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         ))
                       )}
                     </div>
                   )}
                 </section>
+
+                {/* 失败的邀请 */}
+                {failedResults.length > 0 && (
+                  <section className="rounded-2xl bg-red-50 border border-red-200 p-5">
+                    <div 
+                      className="flex items-center justify-between cursor-pointer"
+                      onClick={() => setExpandedFailed(prev => ({ ...prev, [activeOrgId!]: !prev[activeOrgId!] }))}
+                    >
+                      <h2 className="text-lg font-medium text-red-600">
+                        ❌ 失败的邀请 ({failedResults.length})
+                      </h2>
+                      <span className="text-red-400">
+                        {expandedFailed[activeOrgId!] ? '收起 ▲' : '展开 ▼'}
+                      </span>
+                    </div>
+                    {expandedFailed[activeOrgId!] && (
+                      <div className="mt-4 grid gap-2 max-h-60 overflow-y-auto">
+                        {failedResults.map((result, idx) => (
+                          <div key={idx} className="flex items-center justify-between bg-red-100 rounded-xl p-3">
+                            <div className="font-mono text-red-700">{result.identifier}</div>
+                            <div className="text-sm text-red-600">{result.error}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 {/* 邀请表单 */}
                 <section className="rounded-2xl bg-[var(--card)] p-5">
@@ -526,10 +615,50 @@ export default function Page() {
                       {sending ? '发送中…' : `发送邀请 (${toInvite.length})`}
                     </button>
                   </div>
-                  {logs.length > 0 && (
-                    <ul className="mt-3 space-y-1 text-sm bg-gray-100 rounded-xl p-3 max-h-40 overflow-y-auto">
-                      {logs.map((l, i) => <li key={i}>{l}</li>)}
-                    </ul>
+                  
+                  {/* 邀请结果显示 */}
+                  {inviteResults.length > 0 && (
+                    <div className="mt-4 space-y-3">
+                      {/* 成功的邀请 */}
+                      {successResults.length > 0 && (
+                        <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                          <div className="text-sm font-medium text-green-700 mb-2">
+                            ✅ 成功邀请 ({successResults.length})
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {successResults.map((r, i) => (
+                              <span key={i} className="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
+                                {r.identifier}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* 失败的邀请摘要 */}
+                      {failedResults.length > 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                          <div className="text-sm font-medium text-red-700 mb-2">
+                            ❌ 邀请失败 ({failedResults.length})
+                          </div>
+                          <div className="space-y-1">
+                            {failedResults.map((r, i) => (
+                              <div key={i} className="text-sm text-red-600">
+                                <span className="font-mono">{r.identifier}</span>: {r.error}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* 清除结果按钮 */}
+                      <button
+                        onClick={() => setInviteResults([])}
+                        className="text-sm text-gray-500 hover:text-gray-700"
+                      >
+                        清除结果
+                      </button>
+                    </div>
                   )}
                 </section>
               </>
